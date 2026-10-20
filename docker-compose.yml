@@ -1,0 +1,15 @@
+# Local development database only. Use a managed PostgreSQL service in production.
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: gyan
+      POSTGRES_PASSWORD: gyan_dev_password
+      POSTGRES_DB: gyan
+    ports:
+      - "5433:5432"
+    volumes:
+      - gyan-pg:/var/lib/postgresql/data
+volumes:
+  gyan-pg:

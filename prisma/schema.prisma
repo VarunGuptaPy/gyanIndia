@@ -1,0 +1,672 @@
+// GYAN — Global Young Achievers Network
+// Database schema for the NTHE examination platform.
+//
+// Conventions
+// - All money is stored as integer paise (Int). Never floats.
+// - Nullable examination policy fields mean "To Be Announced" and are rendered as such.
+// - Personally identifiable data about children is kept to the minimum needed to run the exam.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Identity & access
+// ─────────────────────────────────────────────────────────────
+
+enum Role {
+  SUPER_ADMIN
+  EXAM_ADMIN
+  FINANCE_ADMIN
+  SCHOOL_COORDINATOR
+  GUARDIAN
+}
+
+model User {
+  id                String    @id @default(cuid())
+  email             String    @unique
+  passwordHash      String
+  name              String
+  role              Role      @default(GUARDIAN)
+  isActive          Boolean   @default(true)
+  emailVerifiedAt   DateTime?
+  lastLoginAt       DateTime?
+  failedLoginCount  Int       @default(0)
+  lockedUntil       DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  guardian          Guardian?
+  auditLogs         AuditLog[]
+  passwordResets    PasswordResetToken[]
+
+  @@index([role])
+}
+
+model PasswordResetToken {
+  id         String    @id @default(cuid())
+  userId     String
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  usedAt     DateTime?
+  createdAt  DateTime  @default(now())
+
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Guardian {
+  id         String   @id @default(cuid())
+  userId     String   @unique
+  fullName   String
+  mobile     String
+  email      String
+  address    String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user       User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  students   Student[]
+  consents   ConsentRecord[]
+}
+
+// Record of the guardian's consent to process the child's data.
+model ConsentRecord {
+  id              String   @id @default(cuid())
+  guardianId      String
+  consentVersion  String
+  consentTextHash String
+  purpose         String
+  ipHash          String?
+  userAgent       String?
+  acceptedAt      DateTime @default(now())
+  withdrawnAt     DateTime?
+
+  guardian        Guardian @relation(fields: [guardianId], references: [id], onDelete: Cascade)
+
+  @@index([guardianId])
+}
+
+enum ExamLanguage {
+  ENGLISH
+  HINDI
+}
+
+model Student {
+  id           String       @id @default(cuid())
+  guardianId   String
+  fullName     String
+  classGrade   Int
+  board        String
+  schoolName   String
+  schoolId     String?
+  city         String
+  state        String
+  examLanguage ExamLanguage @default(ENGLISH)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  guardian      Guardian       @relation(fields: [guardianId], references: [id], onDelete: Cascade)
+  school        School?        @relation(fields: [schoolId], references: [id], onDelete: SetNull)
+  registrations Registration[]
+
+  @@index([guardianId])
+  @@index([classGrade])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Schools
+// ─────────────────────────────────────────────────────────────
+
+enum PartnershipStatus {
+  NEW
+  CONTACTED
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+}
+
+// An approved school. Only schools with isOfficialPartner = true may be described as partners.
+model School {
+  id                String   @id @default(cuid())
+  name              String
+  board             String
+  address           String
+  city              String
+  state             String
+  isOfficialPartner Boolean  @default(false)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  students          Student[]
+  partnerships      SchoolPartnership[]
+
+  @@index([isOfficialPartner])
+}
+
+model SchoolPartnership {
+  id                 String            @id @default(cuid())
+  schoolName         String
+  board              String
+  address            String
+  city               String
+  state              String
+  contactName        String
+  contactRole        String?
+  officialEmail      String
+  contactNumber      String
+  classesOffered     String
+  estimatedStudents  Int
+  message            String?
+  requestVisit       Boolean           @default(false)
+  status             PartnershipStatus @default(NEW)
+  internalNotes      String?
+  schoolId           String?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  school             School?           @relation(fields: [schoolId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([createdAt])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Examination configuration
+// ─────────────────────────────────────────────────────────────
+
+enum RankingScope {
+  SUBJECT_AND_CLASS
+  SUBJECT_ONLY
+}
+
+// How tied scores are ranked. There is intentionally no criteria-based tie-break
+// (e.g. age, time taken) because none has been officially approved.
+enum TiePolicy {
+  SHARED_COMPETITION // 1, 2, 2, 4
+  SHARED_DENSE       // 1, 2, 2, 3
+}
+
+model Examination {
+  id                       String    @id @default(cuid())
+  slug                     String    @unique
+  name                     String
+  shortName                String
+  year                     Int
+  examDate                 DateTime?
+  mode                     String    @default("Offline")
+  languages                String[]
+  registrationFeePaise     Int
+  registrationOpen         Boolean   @default(false)
+
+  // Proposed until approved — editable by administrators.
+  eligibleClassMin         Int       @default(1)
+  eligibleClassMax         Int       @default(10)
+  eligibilityApproved      Boolean   @default(false)
+  boards                   String[]
+  boardsApproved           Boolean   @default(false)
+
+  // Unconfirmed policies — null renders as "To Be Announced".
+  durationMinutes          Int?
+  questionCount            Int?
+  markingScheme            String?
+  negativeMarking          String?
+  registrationDeadline     DateTime?
+  resultDate               DateTime?
+  defaultReportingTime     String?
+  examDayInstructions      String?
+
+  // Operations
+  admitCardsReleased       Boolean   @default(false)
+  rankingScope             RankingScope?
+  tiePolicy                TiePolicy?
+  rankingRulesApproved     Boolean   @default(false)
+  resultsPublished         Boolean   @default(false)
+  rankingsPublished        Boolean   @default(false)
+
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
+
+  subjects                 ExamSubject[]
+  registrations            Registration[]
+  centres                  ExaminationCentre[]
+  awardCategories          AwardCategory[]
+  resultBatches            ResultImportBatch[]
+  rankings                 Ranking[]
+}
+
+model Subject {
+  id           String   @id @default(cuid())
+  slug         String   @unique
+  name         String
+  nameHi       String
+  shortDescription String
+  icon         String
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  examSubjects ExamSubject[]
+}
+
+// Availability and fee of a subject in a given examination.
+model ExamSubject {
+  id             String   @id @default(cuid())
+  examinationId  String
+  subjectId      String
+  feePaise       Int
+  isAvailable    Boolean  @default(true)
+  isApproved     Boolean  @default(false)
+  maxMarks       Int?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  examination    Examination @relation(fields: [examinationId], references: [id], onDelete: Cascade)
+  subject        Subject     @relation(fields: [subjectId], references: [id], onDelete: Restrict)
+  registrationSubjects RegistrationSubject[]
+  rankings       Ranking[]
+  resultBatches  ResultImportBatch[]
+
+  @@unique([examinationId, subjectId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Registrations & payments
+// ─────────────────────────────────────────────────────────────
+
+enum RegistrationStatus {
+  PENDING_PAYMENT
+  CONFIRMED
+  CANCELLED
+  REFUNDED
+}
+
+model Registration {
+  id                   String             @id @default(cuid())
+  registrationNumber   String?            @unique
+  examinationId        String
+  studentId            String
+  status               RegistrationStatus @default(PENDING_PAYMENT)
+  registrationFeePaise Int
+  subjectsFeePaise     Int
+  totalPaise           Int
+  idempotencyKey       String             @unique
+  confirmedAt          DateTime?
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  examination          Examination           @relation(fields: [examinationId], references: [id], onDelete: Restrict)
+  student              Student               @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  subjects             RegistrationSubject[]
+  paymentOrders        PaymentOrder[]
+  allocation           CentreAllocation?
+  admitCard            AdmitCard?
+  certificates         Certificate[]
+
+  // One registration per student per examination.
+  @@unique([examinationId, studentId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model RegistrationSubject {
+  id             String   @id @default(cuid())
+  registrationId String
+  examSubjectId  String
+  feePaise       Int
+  createdAt      DateTime @default(now())
+
+  registration   Registration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+  examSubject    ExamSubject  @relation(fields: [examSubjectId], references: [id], onDelete: Restrict)
+  result         Result?
+  ranking        Ranking?
+  certificates   Certificate[]
+
+  @@unique([registrationId, examSubjectId])
+  @@index([examSubjectId])
+}
+
+enum PaymentOrderStatus {
+  CREATED
+  PAID
+  FAILED
+}
+
+model PaymentOrder {
+  id              String             @id @default(cuid())
+  registrationId  String
+  razorpayOrderId String             @unique
+  amountPaise     Int
+  currency        String             @default("INR")
+  receipt         String             @unique
+  status          PaymentOrderStatus @default(CREATED)
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  registration    Registration @relation(fields: [registrationId], references: [id], onDelete: Restrict)
+  payments        Payment[]
+
+  @@index([registrationId])
+}
+
+enum PaymentStatus {
+  CAPTURED
+  FAILED
+  REFUNDED
+  PARTIALLY_REFUNDED
+}
+
+enum PaymentVerificationSource {
+  CHECKOUT_SIGNATURE
+  WEBHOOK
+}
+
+model Payment {
+  id                String                    @id @default(cuid())
+  paymentOrderId    String
+  razorpayPaymentId String                    @unique
+  amountPaise       Int
+  status            PaymentStatus
+  method            String?
+  errorDescription  String?
+  verifiedVia       PaymentVerificationSource
+  capturedAt        DateTime?
+  createdAt         DateTime                  @default(now())
+  updatedAt         DateTime                  @updatedAt
+
+  paymentOrder      PaymentOrder @relation(fields: [paymentOrderId], references: [id], onDelete: Restrict)
+  refunds           Refund[]
+
+  @@index([status])
+}
+
+enum RefundStatus {
+  PENDING
+  PROCESSED
+  FAILED
+}
+
+model Refund {
+  id               String       @id @default(cuid())
+  paymentId        String
+  razorpayRefundId String?      @unique
+  amountPaise      Int
+  status           RefundStatus @default(PENDING)
+  reason           String
+  createdById      String?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  payment          Payment @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+}
+
+// Razorpay webhook events already processed — guarantees idempotent handling.
+model WebhookEvent {
+  id          String   @id // x-razorpay-event-id
+  event       String
+  processedAt DateTime @default(now())
+}
+
+// Atomic counters (registration numbers, admit card numbers, certificate numbers).
+model Counter {
+  key   String @id
+  value Int    @default(0)
+}
+
+// ─────────────────────────────────────────────────────────────
+// Centres & admit cards
+// ─────────────────────────────────────────────────────────────
+
+model ExaminationCentre {
+  id             String   @id @default(cuid())
+  examinationId  String
+  code           String
+  name           String
+  address        String
+  city           String
+  state          String
+  capacity       Int
+  reportingTime  String?
+  isApproved     Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  examination    Examination        @relation(fields: [examinationId], references: [id], onDelete: Cascade)
+  allocations    CentreAllocation[]
+
+  @@unique([examinationId, code])
+}
+
+model CentreAllocation {
+  id             String   @id @default(cuid())
+  registrationId String   @unique
+  centreId       String
+  createdAt      DateTime @default(now())
+
+  registration   Registration      @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+  centre         ExaminationCentre @relation(fields: [centreId], references: [id], onDelete: Restrict)
+
+  @@index([centreId])
+}
+
+enum AdmitCardStatus {
+  GENERATED
+  RELEASED
+  REVOKED
+}
+
+model AdmitCard {
+  id                String          @id @default(cuid())
+  registrationId    String          @unique
+  admitCardNumber   String          @unique
+  verificationCode  String          @unique
+  status            AdmitCardStatus @default(GENERATED)
+  // Snapshot at generation so a later edit cannot silently change a released card.
+  centreName        String
+  centreAddress     String
+  reportingTime     String
+  generatedAt       DateTime        @default(now())
+  releasedAt        DateTime?
+
+  registration      Registration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+}
+
+// ─────────────────────────────────────────────────────────────
+// Results, rankings, awards, certificates
+// ─────────────────────────────────────────────────────────────
+
+enum ResultStatus {
+  PRESENT
+  ABSENT
+  WITHHELD
+}
+
+model Result {
+  id                    String       @id @default(cuid())
+  registrationSubjectId String       @unique
+  marksObtained         Decimal?     @db.Decimal(7, 2)
+  maxMarks              Int
+  status                ResultStatus @default(PRESENT)
+  batchId               String?
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+
+  registrationSubject   RegistrationSubject @relation(fields: [registrationSubjectId], references: [id], onDelete: Cascade)
+  batch                 ResultImportBatch?  @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  corrections           ResultCorrection[]
+}
+
+model ResultCorrection {
+  id            String   @id @default(cuid())
+  resultId      String
+  previousMarks Decimal? @db.Decimal(7, 2)
+  newMarks      Decimal? @db.Decimal(7, 2)
+  previousStatus ResultStatus
+  newStatus     ResultStatus
+  reason        String
+  correctedById String
+  createdAt     DateTime @default(now())
+
+  result        Result @relation(fields: [resultId], references: [id], onDelete: Cascade)
+}
+
+enum ImportBatchStatus {
+  PENDING_REVIEW
+  APPLIED
+  DISCARDED
+}
+
+model ResultImportBatch {
+  id            String            @id @default(cuid())
+  examinationId String
+  examSubjectId String
+  fileName      String
+  uploadedById  String
+  status        ImportBatchStatus @default(PENDING_REVIEW)
+  validRows     Json
+  errorRows     Json
+  rowCount      Int
+  createdAt     DateTime          @default(now())
+  appliedAt     DateTime?
+
+  examination   Examination @relation(fields: [examinationId], references: [id], onDelete: Cascade)
+  examSubject   ExamSubject @relation(fields: [examSubjectId], references: [id], onDelete: Cascade)
+  results       Result[]
+
+  @@index([examinationId, status])
+}
+
+model Ranking {
+  id                    String   @id @default(cuid())
+  examinationId         String
+  examSubjectId         String
+  classGrade            Int?
+  registrationSubjectId String   @unique
+  rank                  Int
+  marks                 Decimal  @db.Decimal(7, 2)
+  createdAt             DateTime @default(now())
+
+  examination           Examination         @relation(fields: [examinationId], references: [id], onDelete: Cascade)
+  examSubject           ExamSubject         @relation(fields: [examSubjectId], references: [id], onDelete: Cascade)
+  registrationSubject   RegistrationSubject @relation(fields: [registrationSubjectId], references: [id], onDelete: Cascade)
+
+  @@index([examSubjectId, classGrade, rank])
+}
+
+model AwardCategory {
+  id                  String   @id @default(cuid())
+  examinationId       String
+  title               String
+  rankFrom            Int
+  rankTo              Int
+  description         String?
+  cashPrizePaise      Int?
+  includesTrophy      Boolean  @default(false)
+  includesMedal       Boolean  @default(false)
+  includesCertificate Boolean  @default(true)
+  // Only confirmed categories show prize details publicly.
+  isConfirmed         Boolean  @default(false)
+  sortOrder           Int      @default(0)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  examination         Examination @relation(fields: [examinationId], references: [id], onDelete: Cascade)
+}
+
+enum CertificateType {
+  PARTICIPATION
+  MERIT
+  NATIONAL_RANK
+}
+
+enum CertificateStatus {
+  ISSUED
+  REVOKED
+}
+
+model Certificate {
+  id                    String            @id @default(cuid())
+  certificateNumber     String            @unique
+  registrationId        String
+  registrationSubjectId String?
+  type                  CertificateType
+  achievement           String
+  subjectName           String?
+  rank                  Int?
+  examName              String
+  examYear              Int
+  studentName           String
+  status                CertificateStatus @default(ISSUED)
+  issuedAt              DateTime          @default(now())
+  issuedById            String
+  revokedAt             DateTime?
+  revokedReason         String?
+
+  registration          Registration         @relation(fields: [registrationId], references: [id], onDelete: Restrict)
+  registrationSubject   RegistrationSubject? @relation(fields: [registrationSubjectId], references: [id], onDelete: Restrict)
+
+  @@unique([registrationSubjectId, type])
+  @@index([registrationId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Website operations
+// ─────────────────────────────────────────────────────────────
+
+enum EnquiryStatus {
+  NEW
+  IN_PROGRESS
+  RESOLVED
+  SPAM
+}
+
+model Enquiry {
+  id        String        @id @default(cuid())
+  name      String
+  email     String
+  phone     String?
+  category  String
+  message   String
+  status    EnquiryStatus @default(NEW)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  @@index([status, createdAt])
+}
+
+model SiteSetting {
+  key         String   @id
+  value       Json
+  updatedById String?
+  updatedAt   DateTime @updatedAt
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  action     String
+  entityType String
+  entityId   String?
+  // Never store children's personal data or payment credentials here.
+  metadata   Json?
+  ipHash     String?
+  createdAt  DateTime @default(now())
+
+  actor      User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@index([actorId])
+}
+
+model RateLimitBucket {
+  key       String   @id
+  count     Int
+  resetAt   DateTime
+}

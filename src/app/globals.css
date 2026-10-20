@@ -1,0 +1,175 @@
+@import "tailwindcss";
+
+/* ─────────────────────────────────────────────────────────────
+   GYAN design tokens
+   Navy carries authority, royal blue carries action, gold is reserved
+   for recognition and emphasis — never for large backgrounds.
+   ───────────────────────────────────────────────────────────── */
+@theme {
+  --color-navy-950: #050f1f;
+  --color-navy-900: #08172d;
+  --color-navy: #0b1f3a;
+  --color-navy-700: #132b4f;
+  --color-navy-600: #1d3a66;
+
+  --color-royal: #174ea6;
+  --color-royal-700: #123f88;
+  --color-royal-100: #e3ecfa;
+  --color-royal-50: #f1f5fd;
+
+  --color-gold: #d4a83f;
+  --color-gold-600: #b88c27;
+  --color-gold-700: #8f6b19;
+  --color-gold-200: #efdcab;
+  --color-gold-100: #f8efd8;
+  --color-gold-50: #fcf8ee;
+
+  --color-paper: #f7f9fc;
+  --color-ink: #172033;
+  --color-muted: #64748b;
+  --color-line: #e3e8ef;
+  --color-line-strong: #cfd7e3;
+
+  --color-success: #13795b;
+  --color-success-50: #e9f7f1;
+  --color-warning: #a15c07;
+  --color-warning-50: #fdf5e7;
+  --color-danger: #b42318;
+  --color-danger-50: #fdeeec;
+
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-jakarta), var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-hindi: var(--font-devanagari), var(--font-inter), sans-serif;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+  --radius-2xl: 28px;
+
+  --shadow-card: 0 1px 2px rgb(11 31 58 / 0.04), 0 4px 16px -4px rgb(11 31 58 / 0.08);
+  --shadow-lift: 0 2px 4px rgb(11 31 58 / 0.05), 0 18px 40px -12px rgb(11 31 58 / 0.18);
+  --shadow-gold: 0 10px 30px -10px rgb(212 168 63 / 0.55);
+
+  --breakpoint-xs: 25rem;
+
+  --animate-marquee: marquee 40s linear infinite;
+  @keyframes marquee {
+    from { transform: translateX(0); }
+    to { transform: translateX(-50%); }
+  }
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    scroll-behavior: smooth;
+  }
+  body {
+    @apply bg-paper text-ink font-sans antialiased;
+    font-feature-settings: "cv11", "ss01";
+    text-rendering: optimizeLegibility;
+  }
+  h1, h2, h3, h4, h5 {
+    @apply font-display text-navy;
+    letter-spacing: -0.022em;
+    text-wrap: balance;
+  }
+  p { text-wrap: pretty; }
+  fieldset { min-width: 0; }
+  ::selection { background: var(--color-gold-200); color: var(--color-navy); }
+  :focus-visible {
+    outline: 2px solid var(--color-royal);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+  [lang="hi"] { font-family: var(--font-hindi); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@layer components {
+  .container-page {
+    @apply mx-auto w-full max-w-[1240px] px-4 sm:px-6 lg:px-8;
+  }
+  .eyebrow {
+    @apply inline-flex items-center gap-3 text-[0.72rem] font-semibold uppercase tracking-[0.2em] text-royal;
+  }
+  .eyebrow::before {
+    content: "";
+    @apply block h-px w-8 bg-gold;
+  }
+  .eyebrow-light { @apply text-gold-200; }
+  .display-xl {
+    @apply font-display text-[2.4rem] leading-[1.04] font-extrabold xs:text-[2.75rem] sm:text-6xl lg:text-[4.4rem];
+    letter-spacing: -0.035em;
+  }
+  .display-lg {
+    @apply font-display text-[2rem] leading-[1.1] font-bold sm:text-[2.6rem] lg:text-5xl;
+    letter-spacing: -0.03em;
+  }
+  .display-md {
+    @apply font-display text-2xl leading-tight font-bold sm:text-3xl;
+  }
+  .lede { @apply text-lg leading-relaxed text-muted sm:text-xl; }
+  .prose-gyan {
+    @apply text-[1.02rem] leading-[1.75] text-ink/90;
+  }
+  .prose-gyan h2 { @apply mt-12 mb-4 text-2xl font-bold sm:text-[1.7rem]; }
+  .prose-gyan h3 { @apply mt-8 mb-3 text-lg font-bold; }
+  .prose-gyan p { @apply mb-4; }
+  .prose-gyan ul { @apply mb-5 list-disc space-y-2 pl-5 marker:text-gold; }
+  .prose-gyan ol { @apply mb-5 list-decimal space-y-2 pl-5 marker:text-royal marker:font-semibold; }
+  .prose-gyan a { @apply font-medium text-royal underline decoration-royal/30 underline-offset-4 hover:decoration-royal; }
+  .prose-gyan strong { @apply font-semibold text-navy; }
+
+  /* Fine graph-paper texture used on navy surfaces. */
+  .grid-texture {
+    background-image:
+      linear-gradient(to right, rgb(255 255 255 / 0.045) 1px, transparent 1px),
+      linear-gradient(to bottom, rgb(255 255 255 / 0.045) 1px, transparent 1px);
+    background-size: 44px 44px;
+  }
+  .grid-texture-light {
+    background-image:
+      linear-gradient(to right, rgb(11 31 58 / 0.05) 1px, transparent 1px),
+      linear-gradient(to bottom, rgb(11 31 58 / 0.05) 1px, transparent 1px);
+    background-size: 44px 44px;
+  }
+  /* Ticket perforation edge */
+  .perforated {
+    background-image: radial-gradient(circle at 8px 50%, var(--color-paper) 6px, transparent 6.5px);
+    background-size: 100% 22px;
+  }
+  .gold-rule {
+    @apply h-[3px] w-14 rounded-full bg-gold;
+  }
+  .skeleton { @apply animate-pulse rounded-md bg-line; }
+}
+
+@keyframes accordion-down {
+  from { height: 0; opacity: 0; }
+  to { height: var(--radix-accordion-content-height); opacity: 1; }
+}
+@keyframes accordion-up {
+  from { height: var(--radix-accordion-content-height); opacity: 1; }
+  to { height: 0; opacity: 0; }
+}
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes slide-in { from { transform: translateX(100%); } to { transform: translateX(0); } }
+
+/* Hero illustration motion — disabled automatically for reduced-motion users. */
+@keyframes hero-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+@keyframes hero-spin { to { transform: rotate(360deg); } }
+@keyframes hero-twinkle { 0%, 100% { opacity: 1; transform-box: fill-box; } 50% { opacity: 0.35; } }
+.hero-float { animation: hero-float 6s ease-in-out infinite; }
+.hero-orbit { animation: hero-spin 80s linear infinite; }
+.hero-twinkle { animation: hero-twinkle 3.2s ease-in-out infinite; }
+.hero-twinkle-2 { animation: hero-twinkle 4.4s ease-in-out infinite 1s; }
